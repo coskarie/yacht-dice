@@ -8,6 +8,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = {};
 
+// 클라이언트에게 보낼 때 타이머 객체(순환 참조)를 제거하는 헬퍼 함수
+function getClientState(state) {
+    if (!state) return null;
+    const { timer, ...safeState } = state;
+    return safeState;
+}
+
 // 점수 계산 함수 (표준 요트 다이스 룰 기준)
 function calculateScore(category, dice) {
     const counts = [0, 0, 0, 0, 0, 0, 0];
@@ -57,7 +64,7 @@ function nextTurn(roomName) {
     }
 
     if (state.round > 12) {
-        io.to(roomName).emit('gameOver', state);
+        io.to(roomName).emit('gameOver', getClientState(state));
         if (state.timer) clearInterval(state.timer);
         
         // 5초 후 대기실로 자동 복귀
@@ -75,7 +82,7 @@ function nextTurn(roomName) {
         }, 5000);
 
     } else {
-        io.to(roomName).emit('updateGameState', state);
+        io.to(roomName).emit('updateGameState', getClientState(state));
         startTimer(roomName); // 턴 넘어갈 때 타이머 리셋
     }
 }
@@ -175,7 +182,7 @@ io.on('connection', (socket) => {
             if (rooms[room].players.length === 2 && rooms[room].players.every(p => p.start)) {
                 rooms[room].gameStarted = true;
                 rooms[room].dice = rooms[room].dice.map(() => Math.floor(Math.random() * 6) + 1);
-                io.to(room).emit('gameStarted', rooms[room]);
+                io.to(room).emit('gameStarted', getClientState(rooms[room]));
                 startTimer(room); // 게임 시작 시 타이머 가동
             }
         }
@@ -194,7 +201,7 @@ io.on('connection', (socket) => {
         state.dice = state.dice.map((d, i) => state.keep[i] ? d : Math.floor(Math.random() * 6) + 1);
         state.rollsLeft--;
 
-        io.to(room).emit('updateGameState', state);
+        io.to(room).emit('updateGameState', getClientState(state));
     });
 
     socket.on('toggleKeep', (index) => {
@@ -208,7 +215,7 @@ io.on('connection', (socket) => {
         if (state.rollsLeft === 3) return; 
 
         state.keep[index] = !state.keep[index];
-        io.to(room).emit('updateGameState', state);
+        io.to(room).emit('updateGameState', getClientState(state));
     });
 
     socket.on('submitScore', (category) => {
