@@ -76,6 +76,8 @@ function nextTurn(roomName) {
             state.players.forEach(p => {
                 p.ready = false;
                 p.start = false;
+                p.lastRollTime = 0;
+                p.lastSubmitTime = 0;
                 for(let key in p.scores) p.scores[key] = null;
             });
             io.to(roomName).emit('updateLobby', state.players);
@@ -93,7 +95,7 @@ function startTimer(roomName) {
     if (!state) return;
 
     if (state.timer) clearInterval(state.timer);
-    state.timeLeft = 120; // 30을 120으로 변경
+    state.timeLeft = 120; // 120초 룰
     io.to(roomName).emit('timerUpdate', state.timeLeft);
 
     state.timer = setInterval(() => {
@@ -115,6 +117,8 @@ function startTimer(roomName) {
 }
 
 io.on('connection', (socket) => {
+    socket.lastToggleTime = 0; // 대기실 광클 방지용
+
     socket.on('joinRoom', ({ name, room }) => {
         const roomNum = parseInt(room);
         if (roomNum < 1 || roomNum > 9) {
@@ -132,7 +136,7 @@ io.on('connection', (socket) => {
                 round: 1,
                 gameStarted: false,
                 timer: null,
-                timeLeft: 120 // 30을 120으로 변경
+                timeLeft: 120
             };
         }
 
@@ -146,6 +150,8 @@ io.on('connection', (socket) => {
             name: name,
             ready: false,
             start: false,
+            lastRollTime: 0,     // 🎲 주사위 굴림 쿨타임 체크용
+            lastSubmitTime: 0,   // 📝 점수 기록 쿨타임 체크용
             scores: {
                 ones: null, twos: null, threes: null, fours: null, fives: null, sixes: null,
                 choice: null, fourOfAKind: null, fullHouse: null, smallStraight: null, largeStraight: null, yacht: null
@@ -160,6 +166,10 @@ io.on('connection', (socket) => {
     });
 
     socket.on('toggleReady', () => {
+        const now = Date.now();
+        if (now - socket.lastToggleTime < 300) return; // 0.3초 광클 방지
+        socket.lastToggleTime = now;
+
         const room = socket.room;
         if (!room || !rooms[room]) return;
         
@@ -171,6 +181,10 @@ io.on('connection', (socket) => {
     });
 
     socket.on('toggleStart', () => {
+        const now = Date.now();
+        if (now - socket.lastToggleTime < 300) return; // 0.3초 광클 방지
+        socket.lastToggleTime = now;
+
         const room = socket.room;
         if (!room || !rooms[room]) return;
 
@@ -198,6 +212,11 @@ io.on('connection', (socket) => {
         if (currentPlayer.id !== socket.id) return;
         if (state.rollsLeft <= 0) return;
 
+        // 🛡️ 광클 방어: 마지막으로 굴린 지 0.8초가 안 지났으면 서버에서 무시
+        const now = Date.now();
+        if (now - currentPlayer.lastRollTime < 800) return; 
+        currentPlayer.lastRollTime = now;
+
         state.dice = state.dice.map((d, i) => state.keep[i] ? d : Math.floor(Math.random() * 6) + 1);
         state.rollsLeft--;
 
@@ -214,6 +233,10 @@ io.on('connection', (socket) => {
         if (currentPlayer.id !== socket.id) return;
         if (state.rollsLeft === 3) return; 
 
+        // 🛡️ 광클 방어: 주사위가 굴러가고 있는 0.8초 동안은 킵(Keep) 상태 변경 불가
+        const now = Date.now();
+        if (now - currentPlayer.lastRollTime < 800) return;
+
         state.keep[index] = !state.keep[index];
         io.to(room).emit('updateGameState', getClientState(state));
     });
@@ -228,6 +251,14 @@ io.on('connection', (socket) => {
         if (currentPlayer.id !== socket.id) return;
         if (state.rollsLeft === 3) return; 
         if (currentPlayer.scores[category] !== null) return; 
+
+        // 🛡️ 광클 방어: 
+        // 1. 주사위 굴리는 애니메이션 도중(0.8초 내) 제출 차단
+        // 2. 점수 연속 클릭(0.5초 내 중복) 차단
+        const now = Date.now();
+        if (now - currentPlayer.lastRollTime < 800) return; 
+        if (now - currentPlayer.lastSubmitTime < 500) return;
+        currentPlayer.lastSubmitTime = now;
 
         currentPlayer.scores[category] = calculateScore(category, state.dice);
         
