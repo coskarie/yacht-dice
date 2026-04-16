@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>요트 다이스</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 0; background: #2c3e50; color: white; user-select: none; touch-action: manipulation; }
+        .screen { display: none; flex-direction: column; height: 100vh; }
+        .screen.active { display: flex; }
+        
+        h1, h2, h3 { text-align: center; margin: 10px 0; }
+        .center-box { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 20px; }
+        
+        input, button { padding: 15px; margin: 10px 0; width: 100%; max-width: 300px; font-size: 18px; border-radius: 8px; border: none; text-align: center; }
+        button { background: #e74c3c; color: white; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+        button:active { background: #c0392b; }
+        button:disabled { background: #7f8c8d; cursor: not-allowed; }
+        button.ready-btn { background: #2980b9; }
+        button.start-btn { background: #27ae60; }
+        
+        #lobby-players { margin: 20px 0; font-size: 20px; text-align: center; }
+        
+        /* Game Screen Layout */
+        #game-screen { max-width: 600px; margin: 0 auto; background: #34495e; height: 100vh; overflow: hidden; }
+        
+        /* Status Bar & Timer */
+        #status-bar { background: #1abc9c; padding: 10px; text-align: center; font-size: 18px; font-weight: bold; transition: background 0.3s; }
+        #timer-bar { background: #f39c12; padding: 6px; text-align: center; font-size: 15px; font-weight: bold; transition: background 0.3s, color 0.3s; border-bottom: 2px solid #2c3e50; }
+        #timer-bar.hurry { background: #e74c3c; color: white; animation: blink 1s infinite; }
+        
+        /* Scoreboard (Top) */
+        #score-board-container { flex: 1; overflow-y: auto; padding: 10px; background: #ecf0f1; }
+        table { width: 100%; border-collapse: collapse; background: white; color: black; font-size: 14px; text-align: center; }
+        th, td { border: 1px solid #bdc3c7; padding: 8px; transition: background 0.2s; }
+        th { background: #bdc3c7; position: sticky; top: 0; z-index: 10; }
+        .score-row td { cursor: pointer; }
+        .score-cell.clickable { background: #dff9fb; font-weight: bold; }
+        .score-cell.clickable:active { background: #c7ecee; }
+        .score-cell.filled { color: #2c3e50; font-weight: bold; cursor: default; }
+        .score-cell.preview { color: #e74c3c; font-style: italic; opacity: 0.7; }
+        .total-row td { background: #ecf0f1; font-weight: bold; }
+        
+        /* Dice & Controls (Bottom) */
+        #bottom-area { background: #2c3e50; padding: 15px; border-top: 3px solid #f1c40f; display: flex; flex-direction: column; align-items: center; }
+        #dice-container { display: flex; gap: 10px; margin-bottom: 15px; justify-content: center; width: 100%; perspective: 500px; }
+        
+        /* Dice Styling */
+        .die { 
+            width: 18vw; height: 18vw; max-width: 70px; max-height: 70px; 
+            background: white; border-radius: 12px; cursor: pointer; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5), inset 0 -2px 5px rgba(0,0,0,0.1); 
+            transition: transform 0.15s, border-color 0.15s; 
+            border: 4px solid transparent; 
+            display: flex; align-items: center; justify-content: center;
+        }
+        .die.kept { 
+            background: #f1c40f; 
+            transform: translateY(-10px); 
+            border-color: #e67e22; 
+            box-shadow: 0 8px 12px rgba(0,0,0,0.4), inset 0 -2px 5px rgba(0,0,0,0.1);
+        }
+        
+        /* Dice Dots Grid */
+        .die-face {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 100%; height: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        .die-question {
+            font-size: 32px;
+            font-weight: bold;
+            color: #7f8c8d;
+        }
+        .dot {
+            background-color: #2c3e50;
+            border-radius: 50%;
+            width: 85%; height: 85%;
+            place-self: center;
+            box-shadow: inset 0 2px 3px rgba(0,0,0,0.4);
+        }
+        .die.kept .dot {
+            background-color: #8e44ad; 
+        }
+
+        /* Animations */
+        @keyframes shake {
+            0% { transform: rotate(0deg) translateY(0) scale(1); }
+            25% { transform: rotate(-15deg) translateY(-5px) scale(1.05); }
+            50% { transform: rotate(0deg) translateY(0) scale(1); }
+            75% { transform: rotate(15deg) translateY(-5px) scale(1.05); }
+            100% { transform: rotate(0deg) translateY(0) scale(1); }
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .die.rolling {
+            animation: shake 0.15s infinite;
+            border-color: #3498db;
+        }
+
+        #roll-btn { background: #27ae60; font-size: 20px; padding: 20px; max-width: 400px; margin: 0; box-shadow: 0 4px 0 #2ecc71; }
+        #roll-btn:active { transform: translateY(4px); box-shadow: 0 0 0 transparent; }
+        #roll-btn:disabled { background: #7f8c8d; box-shadow: 0 4px 0 #95a5a6; cursor: not-allowed; transform: none; }
+    </style>
+</head>
+<body>
+
+<div id="home-screen" class="screen active">
+    <div class="center-box">
+        <h1>요트 다이스</h1>
+        <input type="text" id="player-name" placeholder="닉네임 입력" maxlength="10">
+        <input type="number" id="room-number" placeholder="방 번호 (1~9)" min="1" max="9">
+        <button id="join-btn">입장하기</button>
+    </div>
+</div>
+
+<div id="lobby-screen" class="screen">
+    <div class="center-box">
+        <h2>대기실 - 방 <span id="lobby-room-num"></span></h2>
+        <div id="lobby-players"></div>
+        <button id="ready-start-btn" class="ready-btn">준비</button>
+    </div>
+</div>
+
+<div id="game-screen" class="screen">
+    <div id="status-bar">게임 상태 로딩중...</div>
+    <div id="timer-bar">⏳ 남은 시간: 30초</div>
+    
+    <div id="score-board-container">
+        <table id="score-table">
+            <thead>
+                <tr>
+                    <th>항목</th>
+                    <th id="th-player1">Player 1</th>
+                    <th id="th-player2">Player 2</th>
+                </tr>
+            </thead>
+            <tbody id="score-tbody">
+                </tbody>
+        </table>
+    </div>
+
+    <div id="bottom-area">
+        <div id="dice-container">
+            <div class="die" id="die-0"><div class="die-question">?</div></div>
+            <div class="die" id="die-1"><div class="die-question">?</div></div>
+            <div class="die" id="die-2"><div class="die-question">?</div></div>
+            <div class="die" id="die-3"><div class="die-question">?</div></div>
+            <div class="die" id="die-4"><div class="die-question">?</div></div>
+        </div>
+        <button id="roll-btn">주사위 굴리기 (3)</button>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+    
+    // UI Elements
+    const homeScreen = document.getElementById('home-screen');
+    const lobbyScreen = document.getElementById('lobby-screen');
+    const gameScreen = document.getElementById('game-screen');
+    
+    const playerNameInput = document.getElementById('player-name');
+    const roomNumberInput = document.getElementById('room-number');
+    const joinBtn = document.getElementById('join-btn');
+    
+    const lobbyPlayersDiv = document.getElementById('lobby-players');
+    const readyStartBtn = document.getElementById('ready-start-btn');
+    const lobbyRoomNum = document.getElementById('lobby-room-num');
+    
+    const statusBar = document.getElementById('status-bar');
+    const timerBar = document.getElementById('timer-bar');
+    const thPlayer1 = document.getElementById('th-player1');
+    const thPlayer2 = document.getElementById('th-player2');
+    const scoreTbody = document.getElementById('score-tbody');
+    
+    const diceElements = [
+        document.getElementById('die-0'), document.getElementById('die-1'),
+        document.getElementById('die-2'), document.getElementById('die-3'),
+        document.getElementById('die-4')
+    ];
+    const rollBtn = document.getElementById('roll-btn');
+
+    // Game Data
+    let myId = '';
+    let currentGameState = null;
+    let localPlayerIndex = -1;
+    let isRolling = false; 
+
+    const categoriesInfo = [
+        { id: 'ones', name: 'Aces (1)' }, { id: 'twos', name: 'Deuces (2)' },
+        { id: 'threes', name: 'Threes (3)' }, { id: 'fours', name: 'Fours (4)' },
+        { id: 'fives', name: 'Fives (5)' }, { id: 'sixes', name: 'Sixes (6)' },
+        { id: 'subtotal', name: 'Subtotal', isTotal: true },
+        { id: 'bonus', name: '+35 Bonus', isTotal: true },
+        { id: 'choice', name: 'Choice' },
+        { id: 'fourOfAKind', name: '4 of a Kind' }, { id: 'fullHouse', name: 'Full House' },
+        { id: 'smallStraight', name: 'S. Straight (15)' }, { id: 'largeStraight', name: 'L. Straight (30)' },
+        { id: 'yacht', name: 'Yacht (50)' },
+        { id: 'total', name: 'Total', isTotal: true }
+    ];
+
+    function getDiceHTML(num) {
+        if (num === '?') return '<div class="die-question">?</div>';
+        
+        const dotPatterns = {
+            1: [4],                
+            2: [2, 6],             
+            3: [2, 4, 6],          
+            4: [0, 2, 6, 8],       
+            5: [0, 2, 4, 6, 8],    
+            6: [0, 2, 3, 5, 6, 8]  
+        };
+        
+        let html = '<div class="die-face">';
+        for (let i = 0; i < 9; i++) {
+            if (dotPatterns[num] && dotPatterns[num].includes(i)) {
+                html += '<div class="dot"></div>';
+            } else {
+                html += '<div></div>';
+            }
+        }
+        html += '</div>';
+        return html;
+    }
+
+    function initScoreTable() {
+        scoreTbody.innerHTML = '';
+        categoriesInfo.forEach(cat => {
+            const tr = document.createElement('tr');
+            if (cat.isTotal) tr.className = 'total-row';
+            else tr.className = 'score-row';
+            
+            const tdName = document.createElement('td');
+            tdName.innerText = cat.name;
+            
+            const tdP1 = document.createElement('td');
+            tdP1.id = `p0-${cat.id}`;
+            
+            const tdP2 = document.createElement('td');
+            tdP2.id = `p1-${cat.id}`;
+            
+            tr.appendChild(tdName);
+            tr.appendChild(tdP1);
+            tr.appendChild(tdP2);
+            scoreTbody.appendChild(tr);
+
+            if (!cat.isTotal) {
+                tdP1.addEventListener('click', () => handleScoreClick(0, cat.id));
+                tdP2.addEventListener('click', () => handleScoreClick(1, cat.id));
+            }
+        });
+    }
+
+    function previewScore(category, dice) {
+        const counts = [0, 0, 0, 0, 0, 0, 0];
+        let sum = 0;
+        dice.forEach(d => { counts[d]++; sum += d; });
+
+        switch (category) {
+            case 'ones': return counts[1] * 1;
+            case 'twos': return counts[2] * 2;
+            case 'threes': return counts[3] * 3;
+            case 'fours': return counts[4] * 4;
+            case 'fives': return counts[5] * 5;
+            case 'sixes': return counts[6] * 6;
+            case 'choice': return sum;
+            case 'fourOfAKind': return counts.some(c => c >= 4) ? sum : 0;
+            case 'fullHouse': return ((counts.some(c => c === 3) && counts.some(c => c === 2)) || counts.some(c => c === 5)) ? sum : 0;
+            case 'smallStraight': return counts.slice(1).map(c => c > 0 ? 1 : 0).join('').includes('1111') ? 15 : 0;
+            case 'largeStraight': return counts.slice(1).map(c => c > 0 ? 1 : 0).join('').includes('11111') ? 30 : 0;
+            case 'yacht': return counts.some(c => c === 5) ? 50 : 0;
+            default: return 0;
+        }
+    }
+
+    joinBtn.addEventListener('click', () => {
+        const name = playerNameInput.value.trim();
+        const room = roomNumberInput.value.trim();
+        if (!name || !room) {
+            alert('이름과 방 번호를 모두 입력해주세요.');
+            return;
+        }
+        lobbyRoomNum.innerText = room;
+        socket.emit('joinRoom', { name, room });
+    });
+
+    readyStartBtn.addEventListener('click', () => {
+        if (readyStartBtn.classList.contains('ready-btn')) {
+            socket.emit('toggleReady');
+        } else if (readyStartBtn.classList.contains('start-btn')) {
+            socket.emit('toggleStart');
+        }
+    });
+
+    rollBtn.addEventListener('click', () => {
+        if (isRolling) return;
+        socket.emit('rollDice');
+    });
+
+    diceElements.forEach((die, index) => {
+        die.addEventListener('click', () => {
+            if (isRolling) return; 
+            socket.emit('toggleKeep', index);
+        });
+    });
+
+    function handleScoreClick(playerIndex, category) {
+        if (!currentGameState || isRolling) return; 
+        if (currentGameState.turnIndex !== localPlayerIndex) return; 
+        if (playerIndex !== localPlayerIndex) return; 
+        if (currentGameState.rollsLeft === 3) return; 
+        if (currentGameState.players[localPlayerIndex].scores[category] !== null) return; 
+
+        socket.emit('submitScore', category);
+    }
+
+    socket.on('connect', () => { myId = socket.id; });
+    socket.on('errorMsg', (msg) => { alert(msg); });
+
+    socket.on('timerUpdate', (timeLeft) => {
+        timerBar.innerText = `⏳ 남은 시간: ${timeLeft}초`;
+        if (timeLeft <= 5) {
+            timerBar.classList.add('hurry');
+        } else {
+            timerBar.classList.remove('hurry');
+        }
+    });
+
+    socket.on('updateLobby', (players) => {
+        homeScreen.classList.remove('active');
+        gameScreen.classList.remove('active'); // 게임 끝난 후 대기실로 돌아갈 때 화면 가리기
+        lobbyScreen.classList.add('active');
+
+        let html = '';
+        let bothReady = players.length === 2;
+        let myData = null;
+
+        players.forEach((p) => {
+            if (p.id === myId) myData = p;
+            let status = p.start ? '시작 대기중' : (p.ready ? '준비 완료' : '대기중');
+            html += `<p>${p.name}: <strong>${status}</strong></p>`;
+            if (!p.ready) bothReady = false;
+        });
+        lobbyPlayersDiv.innerHTML = html;
+
+        if (bothReady) {
+            readyStartBtn.innerText = '시작';
+            readyStartBtn.className = 'start-btn';
+        } else {
+            readyStartBtn.innerText = myData && myData.ready ? '준비 취소' : '준비';
+            readyStartBtn.className = 'ready-btn';
+        }
+    });
+
+    socket.on('gameStarted', (state) => {
+        lobbyScreen.classList.remove('active');
+        gameScreen.classList.add('active');
+        initScoreTable();
+        thPlayer1.innerText = state.players[0].name;
+        thPlayer2.innerText = state.players[1].name;
+        renderGame(state);
+    });
+
+    socket.on('updateGameState', (state) => {
+        const isNewRoll = currentGameState && 
+                          currentGameState.turnIndex === state.turnIndex && 
+                          currentGameState.rollsLeft > state.rollsLeft;
+
+        if (isNewRoll) {
+            playRollAnimation(state);
+        } else {
+            renderGame(state);
+        }
+    });
+
+    socket.on('gameOver', (state) => {
+        renderGame(state);
+        const p1Total = calculateTotal(state.players[0].scores);
+        const p2Total = calculateTotal(state.players[1].scores);
+        let winner = '';
+        if (p1Total > p2Total) winner = `${state.players[0].name} 승리! 🎉`;
+        else if (p2Total > p1Total) winner = `${state.players[1].name} 승리! 🎉`;
+        else winner = '무승부!';
+        
+        statusBar.innerText = `게임 종료! ${winner}`;
+        statusBar.style.background = '#e74c3c';
+        timerBar.innerText = `🔄 5초 후 대기실로 이동합니다...`;
+        timerBar.classList.remove('hurry');
+        timerBar.style.background = '#2c3e50';
+        rollBtn.disabled = true;
+        rollBtn.innerText = '게임 종료';
+    });
+
+    socket.on('playerDisconnected', () => {
+        alert('상대방이 나갔습니다. 게임이 종료됩니다.');
+        location.reload();
+    });
+
+    function calculateTotal(scores) {
+        let subtotal = 0;
+        ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'].forEach(key => {
+            if (scores[key] !== null) subtotal += scores[key];
+        });
+        let bonus = subtotal >= 63 ? 35 : 0;
+        let total = subtotal + bonus;
+        
+        ['choice', 'fourOfAKind', 'fullHouse', 'smallStraight', 'largeStraight', 'yacht'].forEach(key => {
+            if (scores[key] !== null) total += scores[key];
+        });
+        return { subtotal, bonus, total };
+    }
+
+    function playRollAnimation(finalState) {
+        isRolling = true;
+        rollBtn.disabled = true;
+        
+        diceElements.forEach((die, i) => {
+            if (!finalState.keep[i]) {
+                die.classList.add('rolling');
+            }
+        });
+
+        const rollInterval = setInterval(() => {
+            diceElements.forEach((die, i) => {
+                if (!finalState.keep[i]) {
+                    const randomVal = Math.floor(Math.random() * 6) + 1;
+                    die.innerHTML = getDiceHTML(randomVal);
+                }
+            });
+        }, 50);
+
+        setTimeout(() => {
+            clearInterval(rollInterval);
+            diceElements.forEach(die => die.classList.remove('rolling'));
+            isRolling = false;
+            renderGame(finalState);
+        }, 600);
+    }
+
+    function renderGame(state) {
+        currentGameState = state;
+        localPlayerIndex = state.players.findIndex(p => p.id === myId);
+        const isMyTurn = state.turnIndex === localPlayerIndex;
+
+        const currentPlayer = state.players[state.turnIndex];
+        if (isMyTurn) {
+            statusBar.innerText = `내 턴입니다. (라운드 ${state.round}/12)`;
+            statusBar.style.background = '#27ae60';
+            rollBtn.disabled = state.rollsLeft === 0;
+            rollBtn.innerText = `🎲 주사위 굴리기 (남은 횟수: ${state.rollsLeft})`;
+        } else {
+            statusBar.innerText = `${currentPlayer.name}의 턴입니다. (라운드 ${state.round}/12)`;
+            statusBar.style.background = '#e67e22';
+            rollBtn.disabled = true;
+            rollBtn.innerText = `상대방이 생각 중입니다...`;
+        }
+
+        state.dice.forEach((val, i) => {
+            const displayVal = state.rollsLeft === 3 ? '?' : val;
+            diceElements[i].innerHTML = getDiceHTML(displayVal);
+            
+            if (state.keep[i]) {
+                diceElements[i].classList.add('kept');
+            } else {
+                diceElements[i].classList.remove('kept');
+            }
+        });
+
+        state.players.forEach((player, pIndex) => {
+            const totals = calculateTotal(player.scores);
+            
+            categoriesInfo.forEach(cat => {
+                if (cat.isTotal) return; 
+                
+                const cell = document.getElementById(`p${pIndex}-${cat.id}`);
+                const val = player.scores[cat.id];
+                
+                cell.className = 'score-cell';
+                cell.innerText = '';
+
+                if (val !== null) {
+                    cell.innerText = val;
+                    cell.classList.add('filled');
+                } else if (pIndex === localPlayerIndex && isMyTurn && state.rollsLeft < 3) {
+                    const previewVal = previewScore(cat.id, state.dice);
+                    cell.innerText = previewVal;
+                    cell.classList.add('preview', 'clickable');
+                }
+            });
+
+            document.getElementById(`p${pIndex}-subtotal`).innerText = totals.subtotal + '/63';
+            document.getElementById(`p${pIndex}-bonus`).innerText = totals.bonus > 0 ? '+35' : '';
+            document.getElementById(`p${pIndex}-total`).innerText = totals.total;
+        });
+    }
+</script>
+
+</body>
+</html>
