@@ -87,13 +87,13 @@ function nextTurn(roomName) {
     }
 }
 
-// 30초 타이머 시작 로직
+// 120초 타이머 시작 로직
 function startTimer(roomName) {
     const state = rooms[roomName];
     if (!state) return;
 
     if (state.timer) clearInterval(state.timer);
-    state.timeLeft = 30;
+    state.timeLeft = 120; // 30을 120으로 변경
     io.to(roomName).emit('timerUpdate', state.timeLeft);
 
     state.timer = setInterval(() => {
@@ -132,7 +132,7 @@ io.on('connection', (socket) => {
                 round: 1,
                 gameStarted: false,
                 timer: null,
-                timeLeft: 30
+                timeLeft: 120 // 30을 120으로 변경
             };
         }
 
